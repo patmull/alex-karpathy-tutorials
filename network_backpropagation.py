@@ -87,6 +87,7 @@ derivative(values, 'b')
 derivative(values, 'c')
 
 
+
 # For handling the math complexity of the NN it is better to create special data structure
 class Value:
 
@@ -162,17 +163,10 @@ class Value:
 
 
     def activation_function_tanh(self):
-        x = self.data
-        t = (math.exp(2 * x) - 1) / (math.exp(2 * x) + 1)
-        out = Value(t, (self,), 'tanh')
-
-        def _backward():
-            self.gradient += (1 - t ** 2) * out.gradient
-        out._backward = _backward
-
-        return out
 
         """
+        Alternative implementation:
+
         e = math.e
         print("x type: {}".format(type(x)))
         print("e type: {}".format(type(e)))
@@ -186,6 +180,16 @@ class Value:
 
         return threshold_out
         """
+        x = self.data
+        t = (math.exp(2 * x) - 1) / (math.exp(2 * x) + 1)
+        out = Value(t, (self,), 'tanh')
+
+        def _backward():
+            self.gradient += (1 - t ** 2) * out.gradient
+        out._backward = _backward
+
+        return out
+
     def exp(self):
         x = self.data
         out = Value(math.exp(x), (self,), 'exp')
@@ -226,8 +230,8 @@ c = Value(10.0)
 d = a * b + c
 print("d now, also with the children and the operator which produced the value:")
 print(d)
-print(d.previous_values)
-print(d.operator_symbol)
+# print(d.previous_values)
+# print(d.operator_symbol)
 
 # Now let's visualize
 # draw_dot(d)
@@ -266,7 +270,7 @@ print(L)
 # ==>
 
 # For storing the derivative with respect to the particular value,
-# we use the 'grad' attribute
+# we use the 'gradient' attribute
 
 """
 ## (Half-)manual backpropagation calculation
@@ -505,16 +509,13 @@ print('w1', w1.grad.item())
 
 class Neuron:
 
-    def __init__(self, num_of_inputs):
-        self.w = [Value(random.uniform(-1, 1)) for i in range(num_of_inputs)]
+    def __init__(self, nin):
+        self.w = [Value(random.uniform(-1, 1)) for _ in range(nin)]
         self.b = Value(random.uniform(-1, 1))
 
     def __call__(self, x):
-
-        x = [Value(xi) for xi in x]
-        # w = x + b
+        # w * x + b
         activation = sum((wi * xi for wi, xi in zip(self.w, x)), self.b)
-        # activation = Value(activation_value)
         output = activation.activation_function_tanh()
         return output
 
@@ -523,21 +524,21 @@ x = [2.0, 3.0]
 neuron = Neuron(2)
 neuron(x)
 
+
 # Multi-layer perceptron
 class Layer:
-
-    def __init__(self, num_of_inputs, num_of_outputs):
-        self.neurons = [Neuron(num_of_inputs) for i in range(num_of_outputs)]
+    def __init__(self, nin, nout):
+        self.neurons = [Neuron(nin) for _ in range(nout)]
 
     def __call__(self, x):
-        outputs = [n(x) for n in self.neurons]
-        return outputs[0] if len(outputs) == 1 else outputs
+        outs = [n(x) for n in self.neurons]
+        return outs[0] if len(outs) == 1 else outs
 
 class MultiLayerPerceptron:
 
-    def __init__(self, num_of_inputs, num_of_outputs):
-        layer_sizes = [num_of_inputs] + num_of_outputs
-        self.layers = [Layer(layer_sizes[i], layer_sizes[i+1]) for i in range(len(num_of_outputs))]
+    def __init__(self, nin, nouts):
+        sz = [nin] + nouts
+        self.layers = [Layer(sz[i], sz[i + 1]) for i in range(len(nouts))]
 
     def __call__(self, x):
         for layer in self.layers:

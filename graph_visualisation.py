@@ -8,6 +8,7 @@ Edited version accoridng to my Value implementation
 """
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+
 def trace(root):
     # builds a set of all nodes and edges in a graph
     nodes, edges = set(), set()
@@ -15,7 +16,7 @@ def trace(root):
     def build(v):
         if v not in nodes:
             nodes.add(v)
-            # I changed the _prev from the original to previous_values
+            # I changed the previous_value from the original to previous_values
             for child in v.previous_values:
                 edges.add((child, v))
                 build(child)
@@ -30,7 +31,7 @@ def draw_dot(root):
     for n in nodes:
         uid = str(id(n))
         # for any value in the graph, create a rectangular ('record') node for it
-        dot.node(name=uid, label="{ %s | data %.4f | grad %.4f }" % (n.label, n.data, n.gradient), shape='record')
+        dot.node(name=uid, label="{ %s | data %.4f | gradient %.4f }" % (n.label, n.data, n.gradient), shape='record')
         if n.operator_symbol:
             # if this value is a result of some operation, create an op node for it
             dot.node(name=uid + n.operator_symbol, label=n.operator_symbol)
