@@ -87,7 +87,6 @@ derivative(values, 'b')
 derivative(values, 'c')
 
 
-
 # For handling the math complexity of the NN it is better to create special data structure
 class Value:
 
@@ -137,14 +136,14 @@ class Value:
 
     def __pow__(self, other):
         assert isinstance(other, (int, float)), "only supporting int/float powers for now"
-        out = Value(self.data ** other, (self,), f'**{other}')
+        result = Value(self.data ** other, (self,), f'**{other}')
 
         def _backward():
-            self.gradient += other * (self.data ** (other - 1)) * out.gradient
+            self.gradient += other * (self.data ** (other - 1)) * result.gradient
 
-        out._backward = _backward
+        result._backward = _backward
 
-        return out
+        return result
 
     def __rmul__(self, other):  # other * self
         return self * other
@@ -160,7 +159,6 @@ class Value:
 
     def __radd__(self, other):  # other + self
         return self + other
-
 
     def activation_function_tanh(self):
 
@@ -186,6 +184,7 @@ class Value:
 
         def _backward():
             self.gradient += (1 - t ** 2) * out.gradient
+
         out._backward = _backward
 
         return out
@@ -197,6 +196,7 @@ class Value:
         def _backward():
             # NOTE: in the video I incorrectly used = instead of +=. Fixed here.
             self.gradient += out.data * out.gradient
+
         out._backward = _backward
 
         return out
@@ -207,19 +207,15 @@ class Value:
         visited = set()
 
         def build_topo(v):
-            """
-            Topological sort
-
-            :param v:
-            :return:
-            """
             if v not in visited:
                 visited.add(v)
-                for child in v._prev:
+                for child in v.previous_values:
                     build_topo(child)
-            topo.append(v)
+                topo.append(v)
 
-        out.gradient = 1.0
+        build_topo(self)
+
+        self.gradient = 1.0
         for node in reversed(topo):
             node._backward()
 
@@ -478,7 +474,7 @@ a = Value(3.0, label='a')
 b = a + a
 b.backward()
 
-draw_dot(b)
+# draw_dot(b)
 
 # implementing other alternative derivatives of tanh along with the supportive functions
 a = Value(2.0)
@@ -490,16 +486,22 @@ import torch
 
 x1 = torch.Tensor([2.0]).double()  # for aligning the data type with Python
 x1.requires_grad = True
-x2 = torch.Tensor([0.0]).double()                ; x2.requires_grad = True
-w1 = torch.Tensor([-3.0]).double()               ; w1.requires_grad = True
-w2 = torch.Tensor([1.0]).double()                ; w2.requires_grad = True
-b = torch.Tensor([6.8813735870195432]).double()  ; b.requires_grad = True
-n = x1*w1 + x2*w2 + b
-o = torch.tanh(n)
+x2 = torch.Tensor([0.0]).double();
+x2.requires_grad = True
+w1 = torch.Tensor([-3.0]).double();
+w1.requires_grad = True
+w2 = torch.Tensor([1.0]).double();
+w2.requires_grad = True
+b = torch.Tensor([6.8813735870195432]).double();
+b.requires_grad = True
+mlp = x1 * w1 + x2 * w2 + b
 
+o = torch.tanh(mlp)
 print(o.data.item())
 o.backward()
 
+print('---')
+print("Gradients:")
 print('---')
 print('x2', x2.grad.item())
 print('w2', w2.grad.item())
@@ -519,6 +521,10 @@ class Neuron:
         output = activation.activation_function_tanh()
         return output
 
+    def parameters(self):
+        return self.w + [self.b]
+
+
 #  line needs to be added to __mul__ after torch is started
 x = [2.0, 3.0]
 neuron = Neuron(2)
@@ -534,6 +540,14 @@ class Layer:
         outs = [n(x) for n in self.neurons]
         return outs[0] if len(outs) == 1 else outs
 
+    def parameters(self):
+        params = []
+        for neuron in self.neurons:
+            ps = neuron.parameters()
+            params.extend(ps)
+        return params
+
+
 class MultiLayerPerceptron:
 
     def __init__(self, nin, nouts):
@@ -545,21 +559,102 @@ class MultiLayerPerceptron:
             x = layer(x)
         return x
 
+    def parameters(self):
+        return [p for layer in self.layers for p in layer.parameters()]
+
 
 x = [2.0, 3.0, -1.0]
-n = MultiLayerPerceptron(3, [4, 4, 1])
-print(n(x))
+mlp = MultiLayerPerceptron(3, [4, 4, 1])
+print(mlp(x))
 
-"""
-X = [[
+X = [
     [2.0, 3.0, -1.0],
     [3.0, -1.0, 0.5],
     [0.5, 1.0, 1.0],
     [1.0, 1.0, -1.0]
-]]
+]
 
-y = [1.0, -1.0, -1.0, 1.0]
+Y = [1.0, -1.0, -1.0, 1.0]
 
-y_predicted = [n(x) for x in X]
+y_predicted = [mlp(x) for x in X]
 print(y_predicted)
-"""
+y_predicted_old = y_predicted.copy()
+
+print("Losses:")
+print([(y_out - y_true) ** 2 for y_true, y_out in zip(Y, y_predicted)])  # we are measuring how far we are by a square
+loss = sum([(y_out - y_true) ** 2 for y_true, y_out in zip(Y, y_predicted)])
+
+print("loss: ", loss)
+print("example weight: ", mlp.layers[0].neurons[0].w[0])
+print("example gradient: ", mlp.layers[0].neurons[0].w[0].gradient)
+
+print("Evaluating backpropagation....")
+loss.backward()
+
+print("loss: ", loss)
+print("example weight: ", mlp.layers[0].neurons[0].w[0])
+print("example gradient: ", mlp.layers[0].neurons[0].w[0].gradient)
+
+# draw_dot(loss)
+
+## Optimization
+
+print("mlp.parameters()")
+print(mlp.parameters())
+
+old_losses = set()
+for i, p in enumerate(mlp.parameters()):
+    # print("{}, loss: {}".format(i, p))
+    old_losses.add(p.data)
+
+new_losses = set()
+for i, p in enumerate(mlp.parameters()):
+    learning_rate = -0.01  # alpha, we want to minimize loss, shouldn't be too high (overshooting), nor too low (slow)
+    p.data += learning_rate * p.gradient
+    #  print("{}, loss: {}".format(i, p))
+    new_losses.add(p.data)
+
+print(new_losses)
+print(old_losses)
+
+improvements = [old_loss - (old_loss - new_loss) for new_loss, old_loss in zip(new_losses, old_losses)]
+
+improvement = sum(improvements)
+
+print("improvement:")
+print(improvement)
+
+y_predicted = [mlp(x) for x in X]
+
+print("Losses:")
+print([(y_out - y_true) ** 2 for y_true, y_out in zip(Y, y_predicted)])  # we are measuring how far we are by a square
+loss = sum([(y_out - y_true) ** 2 for y_true, y_out in zip(Y, y_predicted)])
+loss.backward()
+
+print("y_prediceted old:")
+print(y_predicted_old)
+print("y_predicted:")
+print(y_predicted)
+
+# we are closer to the right values now, but we need to progress further
+
+## Automatization of optimization
+
+learning_iterations = 20
+for k in range(learning_iterations):
+    # FORWARD
+    y_predicted = [mlp(x) for x in X]
+    loss = sum((y_out - y_true)**2 for y_true, y_out in zip(Y, y_predicted))
+
+    # BACKWARD
+    loss.backward()
+
+    # UPDATE
+    for p in mlp.parameters():
+        p.data += -0.05 * p.gradient
+
+    print(k, loss.data)
+
+# Now we are close to one. We managed to learn the NN this value.
+print("y_predicted:")
+print(y_predicted)
