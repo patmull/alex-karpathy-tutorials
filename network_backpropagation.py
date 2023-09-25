@@ -97,7 +97,7 @@ class Value:
         self.operator_symbol = operator
         # This was added later
         self.label = label
-        self.gradient = 0  # 0 = "no change", "no effect", will not affect anything
+        self.gradient = 0.0  # 0 = "no change", "no effect", will not affect anything
         self._backward = lambda: None
 
     def __repr__(self):
@@ -111,6 +111,7 @@ class Value:
     # We are rewriting the default math operations by own representation
     # where we can also take the child nodes into an account
     def __add__(self, added_value):
+        added_value = added_value if isinstance(added_value, Value) else Value(added_value)
         result = Value(self.data + added_value.data, (self, added_value), '+')
 
         def _backward():
@@ -121,8 +122,8 @@ class Value:
         return result
 
     def __mul__(self, multiplier_value):
-
-        multiplier_value = multiplier_value if isinstance(multiplier_value, Value) else Value(multiplier_value) # this line need to be added after torch is started
+        multiplier_value = multiplier_value if isinstance(multiplier_value, Value) else Value(multiplier_value)
+        # this line need to be added after torch is started
         result = Value(self.data * multiplier_value.data, (self, multiplier_value), '*')
 
         def _backward():
@@ -162,7 +163,19 @@ class Value:
 
     def activation_function_tanh(self):
         x = self.data
+        t = (math.exp(2 * x) - 1) / (math.exp(2 * x) + 1)
+        out = Value(t, (self,), 'tanh')
+
+        def _backward():
+            self.gradient += (1 - t ** 2) * out.gradient
+        out._backward = _backward
+
+        return out
+
+        """
         e = math.e
+        print("x type: {}".format(type(x)))
+        print("e type: {}".format(type(e)))
         f_x = (2 / (1 + e ** (-2 * x))) - 1
         threshold_out = Value(f_x, (self,), 'tanh')  # We want to start recording children
 
@@ -172,14 +185,14 @@ class Value:
         threshold_out._backward = _backward
 
         return threshold_out
-
+        """
     def exp(self):
         x = self.data
         out = Value(math.exp(x), (self,), 'exp')
 
         def _backward():
-            self.gradient += out.data * out.gradient  # NOTE: in the video I incorrectly used = instead of +=. Fixed here.
-
+            # NOTE: in the video I incorrectly used = instead of +=. Fixed here.
+            self.gradient += out.data * out.gradient
         out._backward = _backward
 
         return out
@@ -497,8 +510,11 @@ class Neuron:
         self.b = Value(random.uniform(-1, 1))
 
     def __call__(self, x):
+
+        x = [Value(xi) for xi in x]
         # w = x + b
-        activation = sum((wi*xi for wi, xi in zip(self.w, x)), self.b)
+        activation = sum((wi * xi for wi, xi in zip(self.w, x)), self.b)
+        # activation = Value(activation_value)
         output = activation.activation_function_tanh()
         return output
 
@@ -507,3 +523,42 @@ x = [2.0, 3.0]
 neuron = Neuron(2)
 neuron(x)
 
+# Multi-layer perceptron
+class Layer:
+
+    def __init__(self, num_of_inputs, num_of_outputs):
+        self.neurons = [Neuron(num_of_inputs) for i in range(num_of_outputs)]
+
+    def __call__(self, x):
+        outputs = [n(x) for n in self.neurons]
+        return outputs[0] if len(outputs) == 1 else outputs
+
+class MultiLayerPerceptron:
+
+    def __init__(self, num_of_inputs, num_of_outputs):
+        layer_sizes = [num_of_inputs] + num_of_outputs
+        self.layers = [Layer(layer_sizes[i], layer_sizes[i+1]) for i in range(len(num_of_outputs))]
+
+    def __call__(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+
+x = [2.0, 3.0, -1.0]
+n = MultiLayerPerceptron(3, [4, 4, 1])
+print(n(x))
+
+"""
+X = [[
+    [2.0, 3.0, -1.0],
+    [3.0, -1.0, 0.5],
+    [0.5, 1.0, 1.0],
+    [1.0, 1.0, -1.0]
+]]
+
+y = [1.0, -1.0, -1.0, 1.0]
+
+y_predicted = [n(x) for x in X]
+print(y_predicted)
+"""
