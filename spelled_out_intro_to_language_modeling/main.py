@@ -97,6 +97,7 @@ def plot_bigrams():
     plt.axis('off')
     plt.show()
 
+
 # plot_bigrams()
 
 # Edits for a better standards: using the dots instead of <S> and <E>
@@ -152,7 +153,7 @@ index = 0
 while True:
     prob_distribution = N[index].float()
     # problematic part: normalizing inside of the cycle
-    prob_distribution = prob_distribution / prob_distribution.sum()     # very ineffective
+    prob_distribution = prob_distribution / prob_distribution.sum()  # very ineffective
     index = torch.multinomial(prob_distribution, num_samples=1, replacement=True, generator=g).item()
     out.append(integer_of_string[index])
     if index == 0:
@@ -239,9 +240,18 @@ print("PROB_MATRIX.sum(1, keepdim=True).shape: ", PROB_MATRIX.sum(1, keepdim=Tru
 # However, not that fast! We need to be sure that the operations on Tensors re valid
 print("Is it ok to do the Tenzors operation with these two tensors?")
 print("PROB_MATRIX.shape():", PROB_MATRIX.shape)
+print("PROB_MATRIX.sum(1).shape: ", PROB_MATRIX.sum(1).shape)
 print("PROB_MATRIX.sum(1, keepdim=True).shape: ", PROB_MATRIX.sum(1, keepdim=True).shape)
 print("These dimensions are OK for the tensors operations")
-N_float = N.float()
-PROB_MATRIX = N_float / PROB_MATRIX.sum(1, keepdim=True)
+PROB_MATRIX = N.float()
+PROB_MATRIX = PROB_MATRIX / PROB_MATRIX.sum(1)
+
+print("PROB_MATRIX[0].sum() ", PROB_MATRIX[0].sum())  # row not summing up to 1
+print("PROB_MATRIX[:,0]", PROB_MATRIX[:, 0].sum())  # column summing up to 1
+PROB_MATRIX = N.float()
+PROB_MATRIX = PROB_MATRIX / PROB_MATRIX.sum(1, keepdim=True)
+
+print("PROB_MATRIX[0].sum() ", PROB_MATRIX[0].sum())  # row summing up to 1
+print("PROB_MATRIX[:,0]", PROB_MATRIX[:, 0].sum())  # column not summing up to 1
 print("Normalized prob. matrix of bigrams(PROB_MATRIX): ", PROB_MATRIX)
 sample_dataset()
