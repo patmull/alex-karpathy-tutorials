@@ -91,7 +91,7 @@ def plot_bigrams():
     plt.imshow(N, cmap='Blues')
     for i in range(27):
         for j in range(27):
-            chstr = integer_to_string[i] + integer_to_string[j]
+            chstr = integer_of_string[i] + integer_of_string[j]
             plt.text(j, i, chstr, ha="center", va="bottom", color='gray')
             plt.text(j, i, N[i, j].item(), ha="center", va="top", color='gray')
     plt.axis('off')
@@ -104,7 +104,7 @@ def plot_bigrams():
 characters = sorted(list(set(''.join(words))))
 characters_to_int = {s: i + 1 for i, s in enumerate(characters)}
 characters_to_int['.'] = 0
-integer_to_string = {i: s for s, i in characters_to_int.items()}
+integer_of_string = {i: s for s, i in characters_to_int.items()}
 
 for w in words:
     names_with_special_chars = ['.'] + list(w) + ['.']
@@ -130,8 +130,9 @@ SAMPLES_SEED_VALUE = 2485785757  # random, but if we use this also later in the 
 g = torch.Generator().manual_seed(SAMPLES_SEED_VALUE)
 prob_distribution = torch.rand(3, generator=g)
 prob_distribution = prob_distribution / prob_distribution.sum()
-print("Probability distribution")
+print("Probability distribution:")
 print(prob_distribution)
+print(prob_distribution.shape)
 
 for i in range(20):
     g = torch.Generator().manual_seed(SAMPLES_SEED_VALUE)
@@ -150,38 +151,97 @@ out = []
 index = 0
 while True:
     prob_distribution = N[index].float()
-    prob_distribution = prob_distribution / prob_distribution.sum()
+    # problematic part: normalizing inside of the cycle
+    prob_distribution = prob_distribution / prob_distribution.sum()     # very ineffective
     index = torch.multinomial(prob_distribution, num_samples=1, replacement=True, generator=g).item()
-    out.append(integer_to_string[index])
+    out.append(integer_of_string[index])
     if index == 0:
         break
 print("".join(out))
 
-
+"""
 chars = sorted(list(set(''.join(words))))
-stoi = {s:i+1 for i,s in enumerate(chars)}
-stoi['.'] = 0
-integer_to_string = {i:s for s,i in stoi.items()}
+string_to_integer = {s:i+1 for i,s in enumerate(chars)}
+string_to_integer['.'] = 0
+integer_of_string = {i:s for s,i in string_to_integer.items()}
 
 for w in words:
     chs = ['.'] + list(w) + ['.']
     for ch1, ch2 in zip(chs, chs[1:]):
-        ix1 = stoi[ch1]
-        ix2 = stoi[ch2]
+        ix1 = string_to_integer[ch1]
+        ix2 = string_to_integer[ch2]
         N[ix1, ix2] += 1
-
+"""
 g = torch.Generator().manual_seed(SAMPLES_SEED_VALUE)
 
-for i in range(5):
+print("shape of prob_distribution: ", prob_distribution.shape)
 
-    out = []
-    ix = 0
-    while True:
-        p = N[ix].float()
-        ix = torch.multinomial(p, num_samples=1, replacement=True, generator=g).item()
-        out.append(integer_to_string[ix])
-        if ix == 0:
-            break
-    print(''.join(out))
 
-# TODO: Find where the mistake is and rewrite this to your code
+def sample_dataset():
+    g = torch.Generator().manual_seed(SAMPLES_SEED_VALUE)
+
+    print("shape of prob_distribution: ", prob_distribution.shape)
+
+    for i in range(5):
+
+        out = []
+        ix = 0
+        while True:
+            p = N[ix].float()
+            ix = torch.multinomial(p, num_samples=1, replacement=True, generator=g).item()
+            out.append(integer_of_string[ix])
+            if ix == 0:
+                break
+        print(''.join(out))
+
+
+# # effectivity
+# better for computational effectiveness
+print(prob_distribution.sum())
+
+# Populating frequencies matrix again
+N = torch.zeros((27, 27), dtype=torch.int32)
+
+chars = sorted(list(set(''.join(words))))
+string_to_integer = {s: i + 1 for i, s in enumerate(chars)}
+string_to_integer['.'] = 0
+integer_of_string = {i: s for s, i in string_to_integer.items()}
+
+for w in words:
+    chs = ['.'] + list(w) + ['.']
+    for ch1, ch2 in zip(chs, chs[1:]):
+        ix1 = string_to_integer[ch1]
+        ix2 = string_to_integer[ch2]
+        N[ix1, ix2] += 1
+
+print("N[0]: ", N[0])
+
+PROB_MATRIX = N.float()
+print("PROB_MATRIX: ", PROB_MATRIX)
+# This is not what we want!!! We want to divide all the rows by their sums
+print("PROB_MATRIX.sum(): ", PROB_MATRIX.sum())
+PROB_MATRIX = PROB_MATRIX / PROB_MATRIX.sum()
+print("PROB_MATRIX: ", PROB_MATRIX)
+print("PROB_MATRIX.sum(): ", PROB_MATRIX.sum())
+
+print("PROB_MATRIX.shape: ", PROB_MATRIX.shape)
+print("PROB_MATRIX.sum(0): ", PROB_MATRIX.sum(0))
+print("PROB_MATRIX.sum(0).shape: ", PROB_MATRIX.sum(0).shape)
+# This is what we really want!
+print("vs:")
+# Columns
+print("PROB_MATRIX.sum(0, keepdim=True): ", PROB_MATRIX.sum(0, keepdim=True))
+print("PROB_MATRIX.sum(0, keepdim=True).shape: ", PROB_MATRIX.sum(0, keepdim=True).shape)
+# Rows counts sum
+print("PROB_MATRIX.sum(1, keepdim=True).shape: ", PROB_MATRIX.sum(1, keepdim=True))
+print("PROB_MATRIX.sum(1, keepdim=True).shape: ", PROB_MATRIX.sum(1, keepdim=True).shape)
+# We have finally found what do we want, now we can finally go back to normalizing again
+# However, not that fast! We need to be sure that the operations on Tensors re valid
+print("Is it ok to do the Tenzors operation with these two tensors?")
+print("PROB_MATRIX.shape():", PROB_MATRIX.shape)
+print("PROB_MATRIX.sum(1, keepdim=True).shape: ", PROB_MATRIX.sum(1, keepdim=True).shape)
+print("These dimensions are OK for the tensors operations")
+N_float = N.float()
+PROB_MATRIX = N_float / PROB_MATRIX.sum(1, keepdim=True)
+print("Normalized prob. matrix of bigrams(PROB_MATRIX): ", PROB_MATRIX)
+sample_dataset()
