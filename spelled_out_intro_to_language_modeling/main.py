@@ -1,6 +1,8 @@
+from itertools import zip_longest
+
 from matplotlib import pyplot as plt
 
-words = open("spelled_out_intro_to_language_modeling/names.txt", 'r').read().splitlines()
+words = open("names.txt", 'r').read().splitlines()
 
 print(words[:10])
 print("Shortest name: ", min(len(word) for word in words))
@@ -55,9 +57,9 @@ print("a: ", a)
 a[2, 4] += 1
 print("a: ", a)
 
-ALPHABET_SIZE = 28
+ALPHABET_SIZE_WITH_STOP_SYMBOL = 28
 ## Basic approach of mapping chars to tensors
-N = torch.zeros((ALPHABET_SIZE + 1, ALPHABET_SIZE + 1))  # +1 for the start/stop sign
+N = torch.zeros((ALPHABET_SIZE_WITH_STOP_SYMBOL + 1, ALPHABET_SIZE_WITH_STOP_SYMBOL + 1))  # +1 for the start/stop sign
 characters = list(set(''.join(words)))
 characters_sorted = sorted(characters)
 characters_to_int = {s: i for i, s in enumerate(characters_sorted)}
@@ -248,6 +250,7 @@ PROB_MATRIX = PROB_MATRIX / PROB_MATRIX.sum(1)
 
 print("PROB_MATRIX[0].sum() ", PROB_MATRIX[0].sum())  # row not summing up to 1
 print("PROB_MATRIX[:,0]", PROB_MATRIX[:, 0].sum())  # column summing up to 1
+# This is the cause of torch adding the dimension internally while doing operations on (27,27) / (27) => (27/27) / (1,27)
 PROB_MATRIX = N.float()
 PROB_MATRIX = PROB_MATRIX / PROB_MATRIX.sum(1, keepdim=True)
 
@@ -255,3 +258,97 @@ print("PROB_MATRIX[0].sum() ", PROB_MATRIX[0].sum())  # row summing up to 1
 print("PROB_MATRIX[:,0]", PROB_MATRIX[:, 0].sum())  # column not summing up to 1
 print("Normalized prob. matrix of bigrams(PROB_MATRIX): ", PROB_MATRIX)
 sample_dataset()
+
+## PROBABILITIES AND LIKELIHOODS
+# Probabilities of bigrams and likelihood:
+log_likelihood = 0.0
+n = 0
+probs_log_probs = {'P': [], 'log(P)': []}
+for w in words[:3]:
+    chars = ['.'] + list(w) + ['.']
+    for ch1, ch2 in zip(chars, chars[1:]):
+        index_1 = string_to_integer[ch1]
+        index_2 = string_to_integer[ch2]
+        probability = PROB_MATRIX[index_1, index_2]
+        log_prob = torch.log(probability)
+
+        probs_log_probs['P'].append(probability.item())
+        probs_log_probs['log(P)'].append(log_prob.item())
+
+        log_likelihood += log_prob  # Likelihood = sum of logarithms of probabilities
+        print(f"{ch1}{ch2}: {probability:.4f} {log_prob:.4f}")
+        n += 1
+
+print("Log likelihood: ", log_likelihood)
+negative_log_likelihood = -log_likelihood
+print("Negative log likelihood: ", negative_log_likelihood)  # Because it is loss, we want to minimize it
+normalized_log_likelihood = negative_log_likelihood / n
+print("Normalized log likelihood: ", normalized_log_likelihood)
+
+print("probs_log_probs:")
+print(probs_log_probs)
+
+keys = list(probs_log_probs.keys())
+
+# Get the number of items in the lists (assuming they have the same length)
+num_items = len(probs_log_probs[keys[0]])
+
+
+# Create pairs of 'P' and 'log(P)' values
+pairs = list(zip(probs_log_probs['P'], probs_log_probs['log(P)']))
+
+# Sort the pairs by 'P' in descending order
+sorted_pairs_by_P = sorted(pairs, key=lambda x: x[0], reverse=True)
+
+# Print the sorted pairs
+for p, log_p in sorted_pairs_by_P:
+    print(round(p, 4), round(log_p, 4))
+
+print("--------------")
+sorted_pairs_by_log_P = sorted(pairs, key=lambda x: x[1], reverse=True)
+
+# Print the sorted pairs
+for p, log_p in sorted_pairs_by_P:
+    print(round(p, 4), round(log_p, 4))
+
+print('We see, that these sorts are identical. By log we are trying to "penalize" low probability values.')
+
+## NEURAL NETWORK FOR BIGRAM BASED LANG MODEL
+# We are now ready to use the NN. Things will be similar to the spelled_out_intro_to_nn_and_backprop tutorial
+
+# NN inputs
+
+xs, ys = [], []
+print("Bigrams for the first name in the dataset")
+for w in words[:1]:
+    chars = ['.'] + list(w) + ['.']
+    for ch1, ch2 in zip(chars, chars[1:]):
+        index_1 = string_to_integer[ch1]
+        index_2 = string_to_integer[ch2]
+        print(ch1, ch2)
+        xs.append(index_1)
+        ys.append(index_2)
+
+xs = torch.tensor(xs)
+ys = torch.tensor(ys)
+
+print("xs: ", xs)
+print("ys: ", ys)
+
+print("Often, inserting int into NN is not really good idea (int is ordinal by its nature, "
+      "which is certainly not what we want in the case of int representation of strings). "
+      "We need to encode the inputs.")
+
+import torch.nn.functional as nn_functional
+
+x_encoded = nn_functional.one_hot(xs, num_classes=ALPHABET_SIZE_WITH_STOP_SYMBOL - 1).float()
+print("x_encoded:")
+print(x_encoded)
+print(x_encoded.shape)
+plt.imshow(x_encoded)
+plt.show()
+
+W = torch.randn((27, 1))  # What happens if we use for example (27, 27), what if we set it to 1x1?
+print("Example of matrix multiplication in torch:")
+print(x_encoded @ W)
+
