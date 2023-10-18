@@ -24,6 +24,7 @@ for w in words[:3]:
     for ch1, ch2 in zip(names_with_special_chars, names_with_special_chars[1:]):
         print(ch1, ch2)
 
+
 ## Basic approaches and techniques
 # Counting the bigrams to find out which bigrams are the most common
 
@@ -93,7 +94,7 @@ def plot_bigrams():
     plt.imshow(N, cmap='Blues')
     for i in range(27):
         for j in range(27):
-            chstr = integer_of_string[i] + integer_of_string[j]
+            chstr = integer_to_string[i] + integer_to_string[j]
             plt.text(j, i, chstr, ha="center", va="bottom", color='gray')
             plt.text(j, i, N[i, j].item(), ha="center", va="top", color='gray')
     plt.axis('off')
@@ -107,7 +108,7 @@ def plot_bigrams():
 characters = sorted(list(set(''.join(words))))
 characters_to_int = {s: i + 1 for i, s in enumerate(characters)}
 characters_to_int['.'] = 0
-integer_of_string = {i: s for s, i in characters_to_int.items()}
+integer_to_string = {i: s for s, i in characters_to_int.items()}
 
 for w in words:
     names_with_special_chars = ['.'] + list(w) + ['.']
@@ -157,7 +158,7 @@ while True:
     # problematic part: normalizing inside of the cycle
     prob_distribution = prob_distribution / prob_distribution.sum()  # very ineffective
     index = torch.multinomial(prob_distribution, num_samples=1, replacement=True, generator=g).item()
-    out.append(integer_of_string[index])
+    out.append(integer_to_string[index])
     if index == 0:
         break
 print("".join(out))
@@ -166,7 +167,7 @@ print("".join(out))
 chars = sorted(list(set(''.join(words))))
 string_to_integer = {s:i+1 for i,s in enumerate(chars)}
 string_to_integer['.'] = 0
-integer_of_string = {i:s for s,i in string_to_integer.items()}
+integer_to_string = {i:s for s,i in string_to_integer.items()}
 
 for w in words:
     chs = ['.'] + list(w) + ['.']
@@ -192,7 +193,7 @@ def sample_dataset():
         while True:
             p = N[ix].float()
             ix = torch.multinomial(p, num_samples=1, replacement=True, generator=g).item()
-            out.append(integer_of_string[ix])
+            out.append(integer_to_string[ix])
             if ix == 0:
                 break
         print(''.join(out))
@@ -208,7 +209,7 @@ N = torch.zeros((27, 27), dtype=torch.int32)
 chars = sorted(list(set(''.join(words))))
 string_to_integer = {s: i + 1 for i, s in enumerate(chars)}
 string_to_integer['.'] = 0
-integer_of_string = {i: s for s, i in string_to_integer.items()}
+integer_to_string = {i: s for s, i in string_to_integer.items()}
 
 for w in words:
     chs = ['.'] + list(w) + ['.']
@@ -339,6 +340,7 @@ print("Often, inserting int into NN is not really good idea (int is ordinal by i
       "which is certainly not what we want in the case of int representation of strings). "
       "We need to encode the inputs.")
 
+
 import torch.nn.functional as nn_functional
 
 x_encoded = nn_functional.one_hot(xs, num_classes=ALPHABET_SIZE_WITH_STOP_SYMBOL - 1).float()
@@ -351,4 +353,194 @@ plt.show()
 W = torch.randn((27, 1))  # What happens if we use for example (27, 27), what if we set it to 1x1?
 print("Example of matrix multiplication in torch:")
 print(x_encoded @ W)
+
+W = torch.randn(27, 27)
+# IN #3 x column 13
+dot_product = (x_encoded @ W)
+
+print("dot_product and dot_product[3,13]:")
+print(dot_product)
+print(dot_product.shape)
+print(dot_product[3, 13])
+print(dot_product[3, 13].shape) # This is concrete value
+
+print("Column #13:")
+print(W[:, 13])
+print("IN #3")
+print(x_encoded[3])
+
+product_of_concrete_input_and_column = (x_encoded[3] * W[:, 13]).sum()
+print("product_of_concrete_input_and_column: ", product_of_concrete_input_and_column)
+# OneHotEncoding in fact selected the concrete tensor value
+
+logits = x_encoded @ W  # log-counts
+counts = logits.exp()  # this is what N was before
+probs = counts / counts.sum(1, keepdims=True)  # Normalization
+print("probs: ", probs)
+print("Probability distribution for the '.' at the probs[0]: ")
+print("i.e.: How likely is the second following character in bigram from the alphabet comming next?")
+print(probs[0])
+print("We have 5 different probabilities options for each character in the name Emma (with also the '.' sign: ", probs.shape)
+
+print("Now we already did the INIT (the Generator, the encodings) "
+      "and the FORWARD PASS (logits calculations and the probabilities) phases of the NN!")
+
+print("This is how is NN interpreting the probabilities of the next characters from the alphabet. Later, "
+      "we need to find a better W's to fit the P's")
+print("How?")
+print("Loss function, we have already prepared!")
+
+example_word_length = len(words[0])
+
+print("5 example NN training rounds for the Emma word:")
+negative_log_likelihoods = torch.zeros(example_word_length)  # init nlls
+for i in range(example_word_length):
+    x = xs[i].item()
+    y = ys[i].item()
+
+    print("ith bigram: ", (x, y), (integer_to_string[x], integer_to_string[y]))
+    print(f"IN #({x}): {integer_to_string[x]}")
+    print(f"NN probs: ", probs[i])
+    print(f"TRUE (LABEL): ({y}) {integer_to_string[y]}")
+    p = probs[i, y]
+    print("P of true value: ", p.item())
+    logp = torch.log(p)
+    print("------------")
+    print("LOSSES:")
+    print("------------")
+    print("logp.item()")
+    nll = -logp
+    print("negative log likelihood", nll.item())
+    negative_log_likelihoods[i] = nll
+
+# probabilities of true values are very low, we need to adjust the weights using backprop
+print("individual probabilities examples:")
+print(probs[0, 5])
+print(probs[2, 13])
+
+print(f"torch.arange(5): {torch.arange(5)}")
+print(f"ys: {ys}")
+print(f"probs: {probs}")
+print("Notice that these values are not rounded (but see that those "
+      "are the values on a given index from the 'probs' matrix.")
+print(f"probs[0, 1]: {probs[0, 1]}")
+print(f"probs[1, 2]: {probs[1, 2]}")
+print(f"probs[torch.arange(5), ys]:", {probs[torch.arange(5), ys]})
+
+loss = -probs[torch.arange(5), ys].log().mean()
+print(f"Example loss function: {loss}")
+
+g = torch.Generator().manual_seed(SAMPLES_SEED_VALUE)
+w = torch.randn((27, 27), generator=g, requires_grad=True)
+
+
+def backward_pass(W, loss):
+    W.grad = None
+    loss.backward()
+    return loss
+
+
+def init_nn():
+    # randomly initialize 27 neurons' weights. each neuron receives 27 inputs
+    g = torch.Generator().manual_seed(2147483647)
+    W = torch.randn((27, 27), generator=g, requires_grad=True)
+    return W
+
+
+def forward_pass(xs, ys, W=None, sample_from_bigram_example=True):
+
+    if W is None:
+        W = init_nn()
+
+    # forward pass
+    x_encoding = nn_functional.one_hot(xs, num_classes=27).float()  # input to the network: one-hot encoding
+    logits = x_encoding @ W  # predict log-counts
+    counts = logits.exp()  # counts, equivalent to N
+    probs = counts / counts.sum(1, keepdims=True)  # probabilities for next character
+    smoothing = 0.01*(W**2).mean()
+    # print(f"Additional smoothing (squeeze of w's): {smoothing}")
+    num = xs.nelement()
+
+    loss = (-probs[torch.arange(num), ys].log().mean()
+            + smoothing  # "Squeezing" the w's for keeping them close to the zero
+            # for more accurate influence on the loss
+            # TODO: Try to comment the smoothing in order to see what happens when is not present
+            )
+
+    return W, loss, probs
+
+
+def gradient_descent(xs, ys, W, alpha=0.01, iter=100):
+    for k in range(iter):
+        W, loss, probs = forward_pass(xs=xs, ys=ys, W=W, sample_from_bigram_example=False)
+        loss = backward_pass(W, loss)
+
+        W.data += W.grad * -alpha
+
+        print(f"Loss: {loss.item()}")
+
+
+W, loss, probs = forward_pass(xs=xs, ys=ys)
+loss = backward_pass(W, loss)
+
+print("W.shape")
+print(W.shape)
+
+print("W.grad")
+print(W.grad)
+
+print("loss.item():")
+print(loss.item())
+
+
+def create_dataset():
+    xs, ys = [], []
+    for w in words:
+        chs = ['.'] + list(w) + ['.']
+        for ch1, ch2 in zip(chs, chs[1:]):
+            ix1 = string_to_integer[ch1]
+            ix2 = string_to_integer[ch2]
+            xs.append(ix1)
+            ys.append(ix2)
+    xs = torch.tensor(xs)
+    ys = torch.tensor(ys)
+    num = xs.nelement()
+    print('number of examples: ', num)
+
+    return xs, ys
+
+
+xs, ys = create_dataset()
+W = init_nn()
+gradient_descent(xs=xs, ys=ys, W=W, alpha=100, iter=100)
+
+
+def sample_names_from_nn(W, num_of_samples=5):
+    # finally, sample from the 'neural net' model
+    g = torch.Generator().manual_seed(SAMPLES_SEED_VALUE)
+
+    for j in range(num_of_samples):
+
+        out = []
+        ix = 0
+        while True:
+
+            # ----------
+            # BEFORE:
+            # p = P[ix]
+            # ----------
+            # NOW:
+            xs = torch.tensor([ix])
+            W, loss, _probs = forward_pass(xs=xs, ys=ys, W=W, sample_from_bigram_example=False)
+            # ----------
+
+            ix = torch.multinomial(_probs, num_samples=1, replacement=True, generator=g).item()
+            out.append(integer_to_string[ix])
+            if ix == 0:
+                break
+        print(''.join(out))
+
+# Some of the names may be good, some are pretty bad. We need improvements for the next time
+sample_names_from_nn(W)
+
 
